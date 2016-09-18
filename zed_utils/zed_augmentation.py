@@ -26,6 +26,22 @@ def Debug_DrawAABB(img, aabb_top, aabb_bottom, aabb_left, aabb_right):
     cv2.line(img, (aabb_left, aabb_top), (aabb_left, aabb_bottom), (255))
     cv2.line(img, (aabb_right, aabb_top), (aabb_right, aabb_bottom), (255))
 
+
+def resize_bboxes(bboxes, resize_by):
+    resized_bboxes = []
+    for b in bboxes:
+        # resized_bboxes.append([b[0]//resize_by,b[1]//resize_by,b[2]//resize_by,b[3]//resize_by])
+        resize_bb = [b[0] // resize_by, b[1] // resize_by, b[2] // resize_by, b[3] // resize_by]
+        resized_bboxes.append(resize_bb)
+    return resized_bboxes
+
+def get_aabb_from_contour(X, Y):
+    x_min = np.min(X)
+    y_min = np.min(Y)
+    x_max = np.max(X)
+    y_max = np.max(Y)
+    return (x_min, y_min, x_max, y_max)
+
 def SubRectSafe(np_arr, row_start, row_end, col_start, col_end , verbose=False):
     #debug
     verbose=False
