@@ -7,3 +7,4 @@ from . import zed_dicom_loader
 from . import zed_image
 from . import zed_parsing
 from . import zed_search_files
+from . import zed_files
