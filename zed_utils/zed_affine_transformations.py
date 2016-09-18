@@ -2,7 +2,7 @@ import dicom
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-import zed_image
+from . import zed_image
 import time
 
 def GenRotationMat2D(ang):

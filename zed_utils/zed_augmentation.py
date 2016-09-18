@@ -1,5 +1,5 @@
 import numpy as np
-import zed_affine_transformations as zat
+from . import zed_affine_transformations as zat
 import dicom
 import cv2
 import matplotlib.pyplot as plt

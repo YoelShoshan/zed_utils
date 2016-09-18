@@ -6,9 +6,9 @@ import dicom
 import functools
 import numpy as np
 from PyQt4 import QtGui
-from zed_debug import *
-from volume_viewer import *
-import zed_search_files
+#from . import zed_debug as zad
+#from volume_viewer import *
+from . import zed_search_files
 
 #####################################################################
 ## TODO: move the dicom tags analysis to a different python script
