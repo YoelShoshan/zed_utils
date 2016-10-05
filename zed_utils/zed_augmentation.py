@@ -68,8 +68,25 @@ def SubRectSafe(np_arr, row_start, row_end, col_start, col_end , verbose=False):
 
     return safe_arr
 
+#normalizes the patch to be in -1,1 range.
+#assumes input values in the range[0,4095]
+def normalize_patch(patch):
+    #patch_flat = patch.flatten()
+    ####min_val = np.min(patch_flat)
+    ####if min_val >0:
+    ####    patch_flat -= np.min(patch_flat)
+    #patch_flat = patch_flat.astype('float64') / 4095.0#np.max(patch_flat)
+    #patch_flat = (patch_flat*2.0)-1.0
+    #return patch_flat.reshape(patch.shape)
 
-def TransformPatch(img,rot_ang, flip_x, flip_y, aabb_top, aabb_bottom, aabb_left, aabb_right, interpolation_method=cv2.INTER_LANCZOS4):
+    patch = patch.astype(np.float32) / 4095.0
+    patch *= 2.0
+    patch -= 1.0
+
+    return patch
+
+#order for pertrub_color is multiply then add
+def TransformPatch(img,normalize, pertrub_color_ADD, pertrub_color_MULTIPLY, rot_ang, flip_x, flip_y, aabb_top, aabb_bottom, aabb_left, aabb_right, interpolation_method=cv2.INTER_LANCZOS4):
     #print('dbg - remove!')
     #Debug_DrawAABB(img, aabb_top, aabb_bottom, aabb_left, aabb_right)
 
@@ -119,6 +136,22 @@ def TransformPatch(img,rot_ang, flip_x, flip_y, aabb_top, aabb_bottom, aabb_left
     out_img_patch = out_img[int(center_y-y_rad):int(center_y+y_rad), int(center_x-x_rad):int(center_x+x_rad)]
     #print('k7')
 
+    if normalize:
+        out_img_patch = normalize_patch(out_img_patch)
+
+    need_clipping = False
+
+    if None!=pertrub_color_ADD and pertrub_color_ADD != 0.0:
+        out_img_patch += pertrub_color_ADD
+        need_clipping = True
+
+    if None!=pertrub_color_MULTIPLY and pertrub_color_MULTIPLY != 0.0:
+        out_img_patch *= pertrub_color_MULTIPLY
+        need_clipping = True
+
+    if need_clipping:
+        out_img_patch.clip(-1.0,1.0,out_img_patch)
+
     if 250 != out_img_patch.shape[0] or 250 != out_img_patch.shape[1]:
         z = 123
 
@@ -129,7 +162,19 @@ def TransformPatch(img,rot_ang, flip_x, flip_y, aabb_top, aabb_bottom, aabb_left
 
 INTERP_IND_TO_NAME = {0:cv2.INTER_LINEAR, 1:cv2.INTER_CUBIC, 2:cv2.INTER_AREA, 3:cv2.INTER_LANCZOS4}
 
-def GetRandomTransformationVars(angle_range, flip_x, flip_y, offset_x_range, offset_y_range,aabb_top, aabb_bottom, aabb_left, aabb_right):
+def GetRandomTransformationVars(color_add_range, color_mult_range, angle_range, flip_x, flip_y, offset_x_range, offset_y_range,aabb_top, aabb_bottom, aabb_left, aabb_right):
+
+    if color_add_range>0.0:
+        color_add = np.random.uniform(-color_add_range, color_add_range)
+    else:
+        color_add = 0.0
+
+    if color_mult_range>0.0:
+        color_mult = 1.0+np.random.uniform(-color_mult_range, color_mult_range)
+    else:
+        color_mult = 0.0
+
+
     ang = np.random.uniform(-angle_range, angle_range)
     if flip_x:
         flip_x_val = np.random.randint(0, 2)
@@ -155,7 +200,7 @@ def GetRandomTransformationVars(angle_range, flip_x, flip_y, offset_x_range, off
     aabb_bottom = int(aabb_bottom)
 
 
-    return ang, flip_x_val, flip_y_val, interp_ind, offset_x, offset_y, aabb_top, aabb_bottom, aabb_left, aabb_right
+    return color_add, color_mult, ang, flip_x_val, flip_y_val, interp_ind, offset_x, offset_y, aabb_top, aabb_bottom, aabb_left, aabb_right
 
 def RandomTransformPatch(img,angle_range, flip_x, flip_y, offset_x_range, offset_y_range, aabb_top, aabb_bottom, aabb_left, aabb_right):
     ang, flip_x_val, flip_y_val, interp_ind, offset_x, offset_y, aabb_top, aabb_bottom, aabb_left, aabb_right = GetRandomTransformationVars(angle_range, flip_x, flip_y, offset_x_range, offset_y_range)
