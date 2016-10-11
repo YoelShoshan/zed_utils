@@ -41,6 +41,6 @@ def list_files_directly_in_dir(search_path):
 	sub_files = [f for f in os.listdir(search_path) if os.path.isfile(f)]
 	return sub_files
 
-def list_subdir_directly_in_dir(search_path):
+def list_subdirs_directly_in_dir(search_path):
 	sub_dirs = next(os.walk(search_path))[1]
 	return sub_dirs
