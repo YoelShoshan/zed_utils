@@ -36,3 +36,11 @@ def list_files_recurse(path, match_substring=None, match_prefix=None, match_suff
             matches.append(os.path.join(root, filename))
 
     return matches
+
+def list_files_directly_in_dir(search_path):
+	sub_files = [f for f in os.listdir(search_path) if os.path.isfile(f)]
+	return sub_files
+
+def list_subdir_directly_in_dir(search_path):
+	sub_dirs = next(os.walk(search_path))[1]
+	return sub_dirs
