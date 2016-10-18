@@ -86,7 +86,7 @@ def normalize_patch(patch):
     return patch
 
 #order for pertrub_color is multiply then add
-def TransformPatch(img,normalize, pertrub_color_ADD, pertrub_color_MULTIPLY, rot_ang, flip_x, flip_y, aabb_top, aabb_bottom, aabb_left, aabb_right, interpolation_method=cv2.INTER_LANCZOS4):
+def TransformPatch(img,normalize, zoom_factor, pertrub_color_ADD, pertrub_color_MULTIPLY, rot_ang, flip_x, flip_y, aabb_top, aabb_bottom, aabb_left, aabb_right, interpolation_method=cv2.INTER_LANCZOS4):
     #print('dbg - remove!')
     #Debug_DrawAABB(img, aabb_top, aabb_bottom, aabb_left, aabb_right)
 
@@ -103,9 +103,13 @@ def TransformPatch(img,normalize, pertrub_color_ADD, pertrub_color_MULTIPLY, rot
 
     #print('k3')
 
-    Mrot = zat.GenRotateAroundPoint2D(src_img_patch.shape[1]/2, src_img_patch.shape[0]/2,rot_ang)
+    bbox_middle = (src_img_patch.shape[1]/2, src_img_patch.shape[0]/2)
+
+    Mzoom = zat.GenZoom2D(bbox_middle[0],bbox_middle[1],zoom_factor, zoom_factor)
+    Mrot = zat.GenRotateAroundPoint2D(bbox_middle[0],bbox_middle[1],rot_ang)
     Mflip = zat.GenFlip2D(flip_x, flip_y, src_img_patch.shape[1], src_img_patch.shape[0])
-    M = np.dot(Mrot,Mflip)
+    M = np.dot(Mrot,Mflip) #orig
+    M = np.dot(M, Mzoom)
 
     #print('k4')
 
@@ -162,7 +166,7 @@ def TransformPatch(img,normalize, pertrub_color_ADD, pertrub_color_MULTIPLY, rot
 
 INTERP_IND_TO_NAME = {0:cv2.INTER_LINEAR, 1:cv2.INTER_CUBIC, 2:cv2.INTER_AREA, 3:cv2.INTER_LANCZOS4}
 
-def GetRandomTransformationVars(color_add_range, color_mult_range, angle_range, flip_x, flip_y, offset_x_range, offset_y_range,aabb_top, aabb_bottom, aabb_left, aabb_right):
+def GetRandomTransformationVars(zoom_max, color_add_range, color_mult_range,angle_range, flip_x, flip_y, offset_x_range, offset_y_range,aabb_top, aabb_bottom, aabb_left, aabb_right):
 
     if color_add_range>0.0:
         color_add = np.random.uniform(-color_add_range, color_add_range)
@@ -174,6 +178,11 @@ def GetRandomTransformationVars(color_add_range, color_mult_range, angle_range, 
     else:
         color_mult = 0.0
 
+    zoom_factor = 1.0
+    if zoom_max > 1.0:
+        zoom_factor = np.random.uniform(1.0,zoom_max)
+    if zoom_max < 0.99:
+        raise Exception('Zoom factor of less than 1.0 is not supported')
 
     ang = np.random.uniform(-angle_range, angle_range)
     if flip_x:
@@ -200,11 +209,15 @@ def GetRandomTransformationVars(color_add_range, color_mult_range, angle_range, 
     aabb_bottom = int(aabb_bottom)
 
 
-    return color_add, color_mult, ang, flip_x_val, flip_y_val, interp_ind, offset_x, offset_y, aabb_top, aabb_bottom, aabb_left, aabb_right
+    return zoom_factor, color_add, color_mult, ang, flip_x_val, flip_y_val, interp_ind, offset_x, offset_y, aabb_top, aabb_bottom, aabb_left, aabb_right
 
-def RandomTransformPatch(img,angle_range, flip_x, flip_y, offset_x_range, offset_y_range, aabb_top, aabb_bottom, aabb_left, aabb_right):
-    ang, flip_x_val, flip_y_val, interp_ind, offset_x, offset_y, aabb_top, aabb_bottom, aabb_left, aabb_right = GetRandomTransformationVars(angle_range, flip_x, flip_y, offset_x_range, offset_y_range)
-    rand_patch = TransformPatch(img,ang,flip_x_val, flip_y_val, aabb_top, aabb_bottom, aabb_left, aabb_right, interpolation_method=INTERP_IND_TO_NAME[interp_ind])
+def RandomTransformPatch(img,normalize, zoom_max, angle_range, flip_x, flip_y, offset_x_range, offset_y_range, aabb_top, aabb_bottom, aabb_left, aabb_right):
+    zoom_factor, color_add, color_mult, ang, flip_x_val, flip_y_val, interp_ind, offset_x, offset_y, aabb_top, aabb_bottom, aabb_left, aabb_right = GetRandomTransformationVars(
+        color_add_range, color_mult_range, zoom_max, angle_range, flip_x, flip_y, offset_x_range, offset_y_range, aabb_top, aabb_bottom, aabb_left, aabb_right)
+
+    rand_patch = TransformPatch(
+        img,normalize, zoom_factor, color_add, color_mult, ang,flip_x_val, flip_y_val, aabb_top, aabb_bottom, aabb_left, aabb_right, interpolation_method=INTERP_IND_TO_NAME[interp_ind])
+
     return rand_patch
 
 
@@ -236,17 +249,15 @@ def random_non_empty_coord_2d(img,aabb_size):
             return R, C
     raise ValueError('could not get a non empty random point in many attempts! Is this a black image?')
 
-def RandomAugmentedPatch(img, aabb_size, angle_range, flip_x, flip_y, offset_x_range, offset_y_range):
-    (mid_r, mid_c) = random_non_empty_coord_2d(img)
-
-    aabb_top = mid_r - aabb_size
-    aabb_bottom = mid_r + aabb_size
-    aabb_left = mid_c - aabb_size
-    aabb_right = mid_c + aabb_size
-    #new_patch = RandomTransformPatch(img, np.pi * 2, True, True, 50.0, 50.0, aabb_top, aabb_bottom, aabb_left, aabb_right)
-    new_patch = RandomTransformPatch(img, angle_range, flip_x, flip_y, offset_x_range, offset_y_range, aabb_top, aabb_bottom, aabb_left, aabb_right)
-
-    return new_patch
+#def RandomAugmentedPatch(img, aabb_size, angle_range, flip_x, flip_y, offset_x_range, offset_y_range):
+#    (mid_r, mid_c) = random_non_empty_coord_2d(img)
+#    aabb_top = mid_r - aabb_size
+#    aabb_bottom = mid_r + aabb_size
+#    aabb_left = mid_c - aabb_size
+#    aabb_right = mid_c + aabb_size
+#####    #new_patch = RandomTransformPatch(img, np.pi * 2, True, True, 50.0, 50.0, aabb_top, aabb_bottom, aabb_left, aabb_right)
+#    new_patch = RandomTransformPatch(img, angle_range, flip_x, flip_y, offset_x_range, offset_y_range, aabb_top, aabb_bottom, aabb_left, aabb_right)
+#    return new_patch
 
 def test_random_generate_patches(centers_iterations, per_center_iterations):
     np.random.seed(1337) #reproducable (change when making ensembles)
@@ -273,13 +284,8 @@ def test_random_generate_patches(centers_iterations, per_center_iterations):
             #not using scipy.misc.imsave() because it will normalize
             scipy.misc.toimage(new_patch, cmin=0, cmax=255).save(r'C:\dev\dbs\MG\deep_tumor\visualization\augmentation\%06d_%06d_%.2f_%.2f_aug_%d.png' % (c,i,mid_c, mid_r,i))
 
-
-
-
-
-
 def test():
-    dc = dicom.read_file(r"C:\dev\dbs\MG\all_tumors_diseases\copied_local\train\00357@view@@_SZ_SZ612_20130218_160955_MG_8_bit_SZ612_4.Ser9.Img0.dcm_8bit.dcm")
+    dc = dicom.read_file('/gpfs/haifa/projects/m/msieve_dev2/usr/yoel/dev/dbs/MG/all_tumors_diseases/copied_local/all/00949@view@@SZ_SZ1294_20131117_251311170446_MG_8_bit_SZ1294.Ser3.Img0.dcm_8bit.dcm')    #r"C:\dev\dbs\MG\all_tumors_diseases\copied_local\train\00357@view@@_SZ_SZ612_20130218_160955_MG_8_bit_SZ612_4.Ser9.Img0.dcm_8bit.dcm")
     img = dc.pixel_array
     img[img == 4095] = 0  # remove overlay
     img = (img.astype('float32') * (255.0/ 4095.0)).astype('uint8')
@@ -313,14 +319,40 @@ def test():
 
     def TestFlip(ang):
         plt.figure(1)
-        plt.imshow(TransformPatch(img, (np.pi / 180.0) * ang, False, False, aabb_top, aabb_bottom, aabb_left, aabb_right))
+        plt.imshow(TransformPatch(img, True, 0.0,0.0,(np.pi / 180.0) * ang, False, False, aabb_top, aabb_bottom, aabb_left, aabb_right))
         plt.figure(2)
-        plt.imshow(TransformPatch(img, (np.pi / 180.0) * ang, True, False, aabb_top, aabb_bottom, aabb_left, aabb_right))
+        plt.imshow(TransformPatch(img, True, 0.0,0.0,(np.pi / 180.0) * ang, True, False, aabb_top, aabb_bottom, aabb_left, aabb_right))
         plt.figure(3)
-        plt.imshow(TransformPatch(img, (np.pi / 180.0) * ang, False, True, aabb_top, aabb_bottom, aabb_left, aabb_right))
+        plt.imshow(TransformPatch(img, True, 0.0,0.0,(np.pi / 180.0) * ang, False, True, aabb_top, aabb_bottom, aabb_left, aabb_right))
         plt.figure(4)
-        plt.imshow(TransformPatch(img, (np.pi / 180.0) * ang, True, True, aabb_top, aabb_bottom, aabb_left, aabb_right))
+        plt.imshow(TransformPatch(img, True, 0.0,0.0,(np.pi / 180.0) * ang, True, True, aabb_top, aabb_bottom, aabb_left, aabb_right))
 
+    #TestFlip(90.0)
+
+    def TestZoom():
+        plt.figure(1)
+        plt.imshow(
+            TransformPatch(img, True, 1.0, 0.0, 0.0, 45.0, True, False, aabb_top, aabb_bottom, aabb_left,
+                           aabb_right))
+        plt.figure(2)
+        plt.imshow(
+            TransformPatch(img, True, 1.5, 0.0, 0.0, 45.0, True, False, aabb_top, aabb_bottom, aabb_left,
+                           aabb_right))
+        plt.figure(3)
+        plt.imshow(
+            TransformPatch(img, True, 6.0, 0.0, 0.0, 45.0, True, False, aabb_top, aabb_bottom, aabb_left,
+                           aabb_right))
+        plt.figure(4)
+        plt.imshow(
+            TransformPatch(img, True, 12.0, 0.0, 0.0, 45.0, True, False, aabb_top, aabb_bottom, aabb_left,
+                           aabb_right))
+
+        plt.figure(5)
+        plt.imshow(
+            TransformPatch(img, True, 25.0, 0.0, 0.0, 45.0, True, False, aabb_top, aabb_bottom, aabb_left,
+                           aabb_right))
+
+    TestZoom()
     a = 123
 
     #try out of boundz
