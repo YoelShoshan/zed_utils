@@ -4,6 +4,7 @@ import dicom
 import cv2
 import matplotlib.pyplot as plt
 import scipy.misc
+import collections
 
 #each column in the created matrix is a point in the aabb
 def AABBToPoints(aabb_top, aabb_bottom, aabb_left, aabb_right):
@@ -85,8 +86,19 @@ def normalize_patch(patch):
 
     return patch
 
+INTERP_IND_TO_NAME = {0:cv2.INTER_LINEAR, 1:cv2.INTER_CUBIC, 2:cv2.INTER_AREA, 3:cv2.INTER_LANCZOS4}
+
+#the "space" in which augmentation is free to "play" with
+RandomAugmentationOptions = collections.namedtuple('RandomAugmentationOptions', 'zoom_max color_add_range color_mult_range angle_range flip_x,flip_y offset_x_range offset_y_range')
+
+#a specific well defined augmentation
+AugmentationDef = collections.namedtuple('AugmentationDef','zoom_factor color_add color_mult rot_ang flip_x_val flip_y_val interp_ind offset_x offset_y')
+
 #order for pertrub_color is multiply then add
-def TransformPatch(img,normalize, zoom_factor, pertrub_color_ADD, pertrub_color_MULTIPLY, rot_ang, flip_x, flip_y, aabb_top, aabb_bottom, aabb_left, aabb_right, interpolation_method=cv2.INTER_LANCZOS4):
+#def TransformPatch(img,normalize, zoom_factor, pertrub_color_ADD, pertrub_color_MULTIPLY, rot_ang, flip_x, flip_y, aabb_top, aabb_bottom, aabb_left, aabb_right, interpolation_method=cv2.INTER_LANCZOS4):
+def TransformPatch(img,normalize, augmentation_def, aabb_top, aabb_bottom, aabb_left, aabb_right):
+    interpolation_method = INTERP_IND_TO_NAME[augmentation_def.interp_ind]
+
     #print('dbg - remove!')
     #Debug_DrawAABB(img, aabb_top, aabb_bottom, aabb_left, aabb_right)
 
@@ -105,9 +117,9 @@ def TransformPatch(img,normalize, zoom_factor, pertrub_color_ADD, pertrub_color_
 
     bbox_middle = (src_img_patch.shape[1]/2, src_img_patch.shape[0]/2)
 
-    Mzoom = zat.GenZoom2D(bbox_middle[0],bbox_middle[1],zoom_factor, zoom_factor)
-    Mrot = zat.GenRotateAroundPoint2D(bbox_middle[0],bbox_middle[1],rot_ang)
-    Mflip = zat.GenFlip2D(flip_x, flip_y, src_img_patch.shape[1], src_img_patch.shape[0])
+    Mzoom = zat.GenZoom2D(bbox_middle[0],bbox_middle[1],augmentation_def.zoom_factor, augmentation_def.zoom_factor)
+    Mrot = zat.GenRotateAroundPoint2D(bbox_middle[0],bbox_middle[1],augmentation_def.rot_ang)
+    Mflip = zat.GenFlip2D(augmentation_def.flip_x_val, augmentation_def.flip_y_val, src_img_patch.shape[1], src_img_patch.shape[0])
     M = np.dot(Mrot,Mflip) #orig
     M = np.dot(M, Mzoom)
 
@@ -145,12 +157,12 @@ def TransformPatch(img,normalize, zoom_factor, pertrub_color_ADD, pertrub_color_
 
     need_clipping = False
 
-    if None!=pertrub_color_ADD and pertrub_color_ADD != 0.0:
-        out_img_patch += pertrub_color_ADD
+    if None!=augmentation_def.color_add and augmentation_def.color_add != 0.0:
+        out_img_patch += augmentation_def.color_add
         need_clipping = True
 
-    if None!=pertrub_color_MULTIPLY and pertrub_color_MULTIPLY != 0.0:
-        out_img_patch *= pertrub_color_MULTIPLY
+    if None!=augmentation_def.color_mult and augmentation_def.color_mult != 0.0:
+        out_img_patch *= augmentation_def.color_mult
         need_clipping = True
 
     if need_clipping:
@@ -164,40 +176,39 @@ def TransformPatch(img,normalize, zoom_factor, pertrub_color_ADD, pertrub_color_
     return out_img_patch
 
 
-INTERP_IND_TO_NAME = {0:cv2.INTER_LINEAR, 1:cv2.INTER_CUBIC, 2:cv2.INTER_AREA, 3:cv2.INTER_LANCZOS4}
-
-def GetRandomTransformationVars(zoom_max, color_add_range, color_mult_range,angle_range, flip_x, flip_y, offset_x_range, offset_y_range,aabb_top, aabb_bottom, aabb_left, aabb_right):
-
-    if color_add_range>0.0:
-        color_add = np.random.uniform(-color_add_range, color_add_range)
+#def GetRandomTransformationVars(zoom_max, color_add_range, color_mult_range,angle_range, flip_x, flip_y, offset_x_range, offset_y_range,aabb_top, aabb_bottom, aabb_left, aabb_right):
+def GetRandomTransformationVars(rand_aug_options,aabb_top, aabb_bottom, aabb_left, aabb_right):
+    rao = rand_aug_options
+    if rao.color_add_range>0.0:
+        color_add = np.random.uniform(-rao.color_add_range, rao.color_add_range)
     else:
         color_add = 0.0
 
-    if color_mult_range>0.0:
-        color_mult = 1.0+np.random.uniform(-color_mult_range, color_mult_range)
+    if rao.color_mult_range>0.0:
+        color_mult = 1.0+np.random.uniform(-rao.color_mult_range, rao.color_mult_range)
     else:
         color_mult = 0.0
 
     zoom_factor = 1.0
-    if zoom_max > 1.0:
-        zoom_factor = np.random.uniform(1.0,zoom_max)
-    if zoom_max < 0.99:
+    if rao.zoom_max > 1.0:
+        zoom_factor = np.random.uniform(1.0,rao.zoom_max)
+    if rao.zoom_max < 0.99:
         raise Exception('Zoom factor of less than 1.0 is not supported')
 
-    ang = np.random.uniform(-angle_range, angle_range)
-    if flip_x:
+    ang = np.random.uniform(-rao.angle_range, rao.angle_range)
+    if rao.flip_x:
         flip_x_val = np.random.randint(0, 2)
     else:
         flip_x_val = 0
 
-    if flip_y:
+    if rao.flip_y:
         flip_y_val = np.random.randint(0, 2)
     else:
         flip_y_val = 0
     interp_ind = np.random.randint(0, len(INTERP_IND_TO_NAME))
 
-    offset_x = int(np.random.uniform(-offset_x_range, offset_x_range))
-    offset_y = int(np.random.uniform(-offset_y_range, offset_y_range))
+    offset_x = int(np.random.uniform(-rao.offset_x_range, rao.offset_x_range))
+    offset_y = int(np.random.uniform(-rao.offset_y_range, rao.offset_y_range))
 
     aabb_left += offset_x
     aabb_left = int(aabb_left)
@@ -208,17 +219,15 @@ def GetRandomTransformationVars(zoom_max, color_add_range, color_mult_range,angl
     aabb_bottom += offset_y
     aabb_bottom = int(aabb_bottom)
 
+    return AugmentationDef(zoom_factor, color_add, color_mult, ang, flip_x_val, flip_y_val, interp_ind, offset_x, offset_y), aabb_top, aabb_bottom, aabb_left, aabb_right
 
-    return zoom_factor, color_add, color_mult, ang, flip_x_val, flip_y_val, interp_ind, offset_x, offset_y, aabb_top, aabb_bottom, aabb_left, aabb_right
-
-def RandomTransformPatch(img,normalize, zoom_max, angle_range, flip_x, flip_y, offset_x_range, offset_y_range, aabb_top, aabb_bottom, aabb_left, aabb_right):
-    zoom_factor, color_add, color_mult, ang, flip_x_val, flip_y_val, interp_ind, offset_x, offset_y, aabb_top, aabb_bottom, aabb_left, aabb_right = GetRandomTransformationVars(
-        color_add_range, color_mult_range, zoom_max, angle_range, flip_x, flip_y, offset_x_range, offset_y_range, aabb_top, aabb_bottom, aabb_left, aabb_right)
-
-    rand_patch = TransformPatch(
-        img,normalize, zoom_factor, color_add, color_mult, ang,flip_x_val, flip_y_val, aabb_top, aabb_bottom, aabb_left, aabb_right, interpolation_method=INTERP_IND_TO_NAME[interp_ind])
-
-    return rand_patch
+#def RandomTransformPatch(img,normalize, zoom_max, angle_range, flip_x, flip_y, offset_x_range, offset_y_range, aabb_top, aabb_bottom, aabb_left, aabb_right):
+#def RandomTransformPatch(img, normalize, augmentation_def, aabb_top, aabb_bottom, aabb_left, aabb_right):
+#    zoom_factor, color_add, color_mult, ang, flip_x_val, flip_y_val, interp_ind, offset_x, offset_y, aabb_top, aabb_bottom, aabb_left, aabb_right = GetRandomTransformationVars(
+#            color_add_range, color_mult_range, zoom_max, angle_range, flip_x, flip_y, offset_x_range, offset_y_range, aabb_top, aabb_bottom, aabb_left, aabb_right)
+#    rand_patch = TransformPatch(
+#        img,normalize, zoom_factor, color_add, color_mult, ang,flip_x_val, flip_y_val, aabb_top, aabb_bottom, aabb_left, aabb_right, interpolation_method=INTERP_IND_TO_NAME[interp_ind])
+#    return rand_patch
 
 
 def GetAllPossibleRotationsAABB(aabb_top, aabb_bottom, aabb_left, aabb_right):
