@@ -18,16 +18,11 @@ def imshowpair(im1,im2, cmap1=None, cmap2=None):
     plt.show()
 
 #example usage:
-#imshowmult(img1,img2,img3,cmap1='gray',interpolation2='nearest',title1='banana')
+#imshowmult(img0,img1,img2,cmap0='gray',interpolation2='nearest',title1='banana')
 def imshowmult(*args, **kwargs):
     images_num = len(args)
     if 0==images_num:
         raise Exception('No images provided!')
-
-    #for a in args:
-    #    print(a)
-    #for k, v in kwargs.iteritems():
-    #    print("%s = %s" % (k, v))
 
     figures_side = np.ceil(np.sqrt(images_num))
     fig = plt.figure()
@@ -42,6 +37,10 @@ def imshowmult(*args, **kwargs):
             sharey = base_axis
 
         ax = fig.add_subplot(figures_side,figures_side, i+1, sharex=sharex, sharey=sharey)
+
+        title_str = 'title%d'%i
+        if title_str in kwargs:
+            ax.set_title(kwargs[title_str])
 
         if not base_axis:
             base_axis = ax

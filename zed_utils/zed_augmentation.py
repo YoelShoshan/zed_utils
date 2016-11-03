@@ -1,6 +1,6 @@
 import numpy as np
 from . import zed_affine_transformations as zat
-import dicom
+import pydicom as dicom
 import cv2
 import matplotlib.pyplot as plt
 import scipy.misc

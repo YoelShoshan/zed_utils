@@ -2,7 +2,7 @@ import time
 import sys
 import os
 import fnmatch
-import dicom
+import pydicom as dicom
 import functools
 import numpy as np
 from PyQt4 import QtGui
