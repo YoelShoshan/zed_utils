@@ -15,7 +15,7 @@ import re
 
 import warnings
 
-warnings.warn("using debug tricks - messing with frames - should be removed from production", UserWarning)
+#warnings.warn("using debug tricks - messing with frames - should be removed from production", UserWarning)
 
 def echo(arg):
     frame = inspect.currentframe()
